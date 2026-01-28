@@ -10,12 +10,12 @@ import random
 
 # ─── CONFIG ──────────────────────────────────────────
 BOT_USERNAME = getenv("BOT_USERNAME", "").lower()
-BOT_NAME = "tidal"
+BOT_NAME = "mimi"
 BOT_NAME_LOWER = BOT_NAME.lower()
-OWNER_USERNAME = "@Hehe_stalker"
+OWNER_USERNAME = "@Kaito_3_2"
 
 # ONLY THIS ADMIN CAN CONTROL CHATBOT IN GROUPS
-CHATBOT_ADMIN_ID = 7659846392
+CHATBOT_ADMIN_ID = 6356015122
 
 groq = Groq(api_key=getenv("GROQ_API_KEY"))
 
@@ -40,7 +40,7 @@ CHATBOT_ENABLED_GROUPS = set()
 
 # ─── SYSTEM PROMPT ───────────────────────────────────
 SYSTEM_PROMPT = f"""
-Your name is Tidal. You are a girl.
+Your name is mimi. You are a girl.
 You chat like a real human bestfriend on Telegram.
 Your Hinglish is smooth, calm, and natural.
 Personality:
