@@ -23,8 +23,7 @@ MONGO_DB_URL = getenv("MONGO_DB_URL", None)
 
 # -----------------------------
 # YouTube API configuration
-API_URL = getenv("API_URL", 'https://api.thequickearn.xyz') #youtube song url
-VIDEO_API_URL = getenv("VIDEO_API_URL", 'https://api.video.thequickearn.xyz')
+API_URL = getenv("API_URL", 'https://fastapi2-wdtl.onrender.com') #youtube song url
 API_KEY = getenv("API_KEY", None)
 
 # Limits and IDs
