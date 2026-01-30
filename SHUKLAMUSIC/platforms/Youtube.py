@@ -3,32 +3,29 @@ import os
 import re
 import aiohttp
 from typing import Union
-import requests
-# yt-dlp import removed completely
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
 from py_yt import VideosSearch
 from SHUKLAMUSIC.utils.database import is_on_off
 from SHUKLAMUSIC.utils.formatters import time_to_seconds
-import config
-from config import API_URL, VIDEO_API_URL, API_KEY
+from config import API_URL, API_KEY
 
-# Aria2c Helper Function
+# 🔥 1. ARIA2C DOWNLOADER HELPER
 async def download_with_aria2(url: str, file_path: str):
     if os.path.exists(file_path):
         return file_path
     
-    # Ensure directory exists
     download_dir = os.path.dirname(file_path)
     if not os.path.exists(download_dir):
         os.makedirs(download_dir)
 
     filename = os.path.basename(file_path)
     
+    # Fast Download Command
     cmd = [
         "aria2c",
         "-x16", # 16 Connections
-        "-s16", # Split 16
+        "-s16", # Split into 16 parts
         "-d", download_dir,
         "-o", filename,
         url
@@ -45,70 +42,68 @@ async def download_with_aria2(url: str, file_path: str):
         if os.path.exists(file_path):
             return file_path
     except Exception as e:
-        print(f"Aria2 Error: {e}")
+        print(f"❌ Aria2 Error: {e}")
     return None
 
-# Modified to use API + Aria2
-async def download_song(link: str):
-    video_id = link.split('v=')[-1].split('&')[0]
-    download_folder = "downloads"
-    file_path = f"{download_folder}/{video_id}.mp3"
+# 🔥 2. UNIVERSAL API FETCHER (Based on your Curl)
+async def get_api_link(query: str):
+    # Ensure URL doesn't have double slashes
+    base_url = API_URL.rstrip("/")
+    url = f"{base_url}/getvideo"
     
-    if os.path.exists(file_path):
-        return file_path
-        
-    song_url = f"{API_URL}/song/{video_id}?api={API_KEY}"
-    
-    download_url = None
+    params = {
+        "query": query,
+        "key": API_KEY
+    }
+
     async with aiohttp.ClientSession() as session:
-        for attempt in range(5): # Reduced retries
-            try:
-                async with session.get(song_url) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        status = data.get("status", "").lower()
-                        if status == "done":
-                            download_url = data.get("link")
-                            break
-                        elif status == "downloading":
-                            await asyncio.sleep(3)
-            except:
-                pass
-    
-    if download_url:
-        # Using Aria2c instead of slow python write
-        return await download_with_aria2(download_url, file_path)
+        try:
+            async with session.get(url, params=params, timeout=20) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    # Check if 'link' exists in response
+                    if "link" in data:
+                        return data["link"]
+                    # Fallback check
+                    if data.get("status") == 200 and "link" in data:
+                        return data["link"]
+        except Exception as e:
+            print(f"⚠️ API Fetch Error: {e}")
     return None
 
-# Modified to use API + Aria2
-async def download_video(link: str):
-    video_id = link.split('v=')[-1].split('&')[0]
-    download_folder = "downloads"
-    file_path = f"{download_folder}/{video_id}.mp4"
-    
-    if os.path.exists(file_path):
-        return file_path
-        
-    video_url = f"{VIDEO_API_URL}/video/{video_id}?api={API_KEY}"
-    
-    download_url = None
-    async with aiohttp.ClientSession() as session:
-        for attempt in range(5):
-            try:
-                async with session.get(video_url) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        status = data.get("status", "").lower()
-                        if status == "done":
-                            download_url = data.get("link")
-                            break
-                        elif status == "downloading":
-                            await asyncio.sleep(3)
-            except:
-                pass
+# 🔥 3. DOWNLOAD LOGIC (Uses /getvideo for everything)
+async def download_media(link: str, is_video: bool = False):
+    try:
+        # Extract ID or use Full Link as Query
+        if "v=" in link:
+            query = link.split('v=')[-1].split('&')[0]
+        elif "youtu.be" in link:
+            query = link.split("/")[-1].split("?")[0]
+        else:
+            query = link 
 
-    if download_url:
-        return await download_with_aria2(download_url, file_path)
+        # 1. Get Direct Link from API
+        direct_url = await get_api_link(query)
+        
+        if not direct_url:
+            print("❌ API did not return a link.")
+            return None
+
+        # 2. Determine Filename & Extension
+        # API mostly returns .mp4 (from Catbox), even for songs
+        ext = direct_url.split(".")[-1]
+        if len(ext) > 4: # Safety check if no extension
+            ext = "mp4"
+            
+        download_folder = "downloads"
+        filename = f"{query}.{ext}"
+        file_path = os.path.join(download_folder, filename)
+        
+        # 3. Download via Aria2
+        return await download_with_aria2(direct_url, file_path)
+
+    except Exception as e:
+        print(f"Download Media Error: {e}")
     return None
 
 
@@ -214,37 +209,21 @@ class YouTubeAPI:
             thumbnail = result["thumbnails"][0]["url"].split("?")[0]
         return thumbnail
 
-    # 🔥 REPLACED YT-DLP WITH API LOGIC
+    # 🔥 REPLACED WITH API FETCH
     async def video(self, link: str, videoid: Union[bool, str] = None):
         if videoid:
             link = self.base + link
         if "&" in link:
             link = link.split("&")[0]
         
-        # Extract ID
-        try:
-            vid_id = link.split('v=')[-1].split('&')[0]
-        except:
-            return 0, "Invalid Link"
+        # Reuse download_media (It handles logic internally)
+        file_path = await download_media(link, is_video=True)
+        if file_path:
+            return 1, file_path
 
-        # Fetch Direct Link from API
-        video_url = f"{VIDEO_API_URL}/video/{vid_id}?api={API_KEY}"
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(video_url) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        if data.get("status") == "done":
-                            return 1, data.get("link") # Return Direct URL
-            except Exception as e:
-                print(f"API Video Fetch Error: {e}")
-        
-        return 0, "Failed to fetch video url from API"
+        return 0, "Failed to fetch video"
 
     async def playlist(self, link, limit, user_id, videoid: Union[bool, str] = None):
-        # Playlist usually requires yt-dlp to parse fast. 
-        # Since we removed yt-dlp, we return empty or you need a playlist API.
-        # Keeping it empty/safe to avoid errors.
         return []
 
     async def track(self, link: str, videoid: Union[bool, str] = None):
@@ -268,8 +247,6 @@ class YouTubeAPI:
         }
         return track_details, vidid
 
-    # Removed 'formats' function as it purely relied on yt-dlp
-
     async def slider(
         self,
         link: str,
@@ -288,7 +265,7 @@ class YouTubeAPI:
         thumbnail = result[query_type]["thumbnails"][0]["url"].split("?")[0]
         return title, duration_min, thumbnail, vidid
 
-    # 🔥 MAIN DOWNLOADER REPLACED (API + ARIA2 ONLY)
+    # 🔥 MAIN DOWNLOADER (Uses getvideo API + Aria2)
     async def download(
         self,
         link: str,
@@ -300,21 +277,18 @@ class YouTubeAPI:
         format_id: Union[bool, str] = None,
         title: Union[bool, str] = None,
     ) -> str:
+        
         if videoid:
             link = self.base + link
 
-        # Logic: Always use the helper functions which now use API+Aria2
-        if video:
-            downloaded_file = await download_video(link)
-            direct = True # Since it's from API, we treat it as direct
-        else:
-            # Covers audio, songaudio, etc.
-            downloaded_file = await download_song(link)
-            direct = True
-
+        # Calls the centralized download_media function
+        # Since API returns a file (likely MP4), we just download it.
+        # PyTgCalls will play the audio from the MP4 automatically if audio is requested.
+        
+        downloaded_file = await download_media(link, is_video=bool(video))
+            
         if downloaded_file:
-            return downloaded_file, direct
+            return downloaded_file, True
         else:
-            # Final fallback if API completely fails
             return None, False
-    
+        
