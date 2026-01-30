@@ -1,3 +1,4 @@
+import time  # 🔥 Added time module
 import os
 from random import randint
 from typing import Union
@@ -29,10 +30,14 @@ async def stream(
     spotify: Union[bool, str] = None,
     forceplay: Union[bool, str] = None,
 ):
+    # 🔥 1. Timer Start
+    start_time = time.time()
+
     if not result:
         return
     if forceplay:
         await SHUKLA.force_stop_stream(chat_id)
+    
     if streamtype == "playlist":
         msg = f"{_['play_19']}\n\n"
         count = 0
@@ -103,7 +108,6 @@ async def stream(
                 run = await app.send_photo(
                     original_chat_id,
                     photo=img,
-                    has_spoiler=True,
                     caption=_["stream_1"].format(
                         f"https://t.me/{app.username}?start=info_{vidid}",
                         title[:23],
@@ -111,6 +115,7 @@ async def stream(
                         user_name,
                     ),
                     reply_markup=InlineKeyboardMarkup(button),
+                    has_spoiler=True # 🔥 Added Spoiler
                 )
                 db[chat_id][0]["mystic"] = run
                 db[chat_id][0]["markup"] = "stream"
@@ -130,7 +135,10 @@ async def stream(
                 photo=carbon,
                 caption=_["play_21"].format(position, link),
                 reply_markup=upl,
+                has_spoiler=True
             )
+
+    # 🔥 UPDATED YOUTUBE BLOCK (Supports API + Aria2 + Timer)
     elif streamtype == "youtube":
         link = result["link"]
         vidid = result["vidid"]
@@ -138,12 +146,32 @@ async def stream(
         duration_min = result["duration_min"]
         thumbnail = result["thumb"]
         status = True if video else None
+
+        # 🔥 2. Queue Limit Check
+        current_queue = db.get(chat_id)
+        if current_queue is not None and len(current_queue) >= 10:
+            return await app.send_message(original_chat_id, "You can't add more than 10 songs to the queue.")
+
         try:
-            file_path, direct = await YouTube.download(
-                vidid, mystic, videoid=True, video=status
-            )
-        except:
+            # 🔥 3. Logic: Check if link is Direct (API) or YouTube ID
+            # Agar http hai aur youtube nahi hai, toh direct API link hai
+            if "http" in link and "youtube" not in link and "youtu.be" not in link:
+                file_path, direct = await YouTube.download(
+                    link, mystic, videoid=None, video=status
+                )
+            else:
+                # Normal YouTube ID flow
+                file_path, direct = await YouTube.download(
+                    vidid, mystic, videoid=True, video=status
+                )
+        except Exception as e:
+            # print(f"Download Error: {e}") 
             raise AssistantErr(_["play_14"])
+        
+        # Ensure file actually downloaded
+        if not file_path or not os.path.exists(file_path):
+             raise AssistantErr("Failed to download media.")
+
         if await is_active_chat(chat_id):
             await put_queue(
                 chat_id,
@@ -166,10 +194,12 @@ async def stream(
         else:
             if not forceplay:
                 db[chat_id] = []
+            
+            # Join call with LOCAL FILE PATH (Safe from disconnects)
             await SHUKLA.join_call(
                 chat_id,
                 original_chat_id,
-                file_path,
+                file_path, 
                 video=status,
                 image=thumbnail,
             )
@@ -187,20 +217,28 @@ async def stream(
             )
             img = await get_thumb(vidid)
             button = stream_markup(_, chat_id)
+
+            # 🔥 4. Calculate Time
+            load_time = round(time.time() - start_time, 2)
+
+            # Note: Agar aapke old strings.json me {} (placeholder) nahi hai time ke liye, 
+            # toh ye error de sakta hai. Agar error aaye toh load_time hata dena format se.
             run = await app.send_photo(
                 original_chat_id,
                 photo=img,
-                has_spoiler=True,
                 caption=_["stream_1"].format(
                     f"https://t.me/{app.username}?start=info_{vidid}",
                     title[:23],
                     duration_min,
                     user_name,
+                    # load_time # Uncomment agar caption me time add karna ho
                 ),
                 reply_markup=InlineKeyboardMarkup(button),
+                has_spoiler=True # 🔥 Added Spoiler
             )
             db[chat_id][0]["mystic"] = run
             db[chat_id][0]["markup"] = "stream"
+
     elif streamtype == "soundcloud":
         file_path = result["filepath"]
         title = result["title"]
@@ -248,9 +286,11 @@ async def stream(
                     config.SUPPORT_CHAT, title[:23], duration_min, user_name
                 ),
                 reply_markup=InlineKeyboardMarkup(button),
+                has_spoiler=True
             )
             db[chat_id][0]["mystic"] = run
             db[chat_id][0]["markup"] = "tg"
+
     elif streamtype == "telegram":
         file_path = result["path"]
         link = result["link"]
@@ -300,9 +340,11 @@ async def stream(
                 photo=config.TELEGRAM_VIDEO_URL if video else config.TELEGRAM_AUDIO_URL,
                 caption=_["stream_1"].format(link, title[:23], duration_min, user_name),
                 reply_markup=InlineKeyboardMarkup(button),
+                has_spoiler=True
             )
             db[chat_id][0]["mystic"] = run
             db[chat_id][0]["markup"] = "tg"
+
     elif streamtype == "live":
         link = result["link"]
         vidid = result["vidid"]
@@ -359,7 +401,6 @@ async def stream(
             run = await app.send_photo(
                 original_chat_id,
                 photo=img,
-                has_spoiler=True,
                 caption=_["stream_1"].format(
                     f"https://t.me/{app.username}?start=info_{vidid}",
                     title[:23],
@@ -367,9 +408,11 @@ async def stream(
                     user_name,
                 ),
                 reply_markup=InlineKeyboardMarkup(button),
+                has_spoiler=True
             )
             db[chat_id][0]["mystic"] = run
             db[chat_id][0]["markup"] = "tg"
+
     elif streamtype == "index":
         link = result
         title = "ɪɴᴅᴇx ᴏʀ ᴍ3ᴜ8 ʟɪɴᴋ"
@@ -415,11 +458,11 @@ async def stream(
             run = await app.send_photo(
                 original_chat_id,
                 photo=config.STREAM_IMG_URL,
-                has_spoiler=True,
                 caption=_["stream_2"].format(user_name),
                 reply_markup=InlineKeyboardMarkup(button),
+                has_spoiler=True
             )
             db[chat_id][0]["mystic"] = run
             db[chat_id][0]["markup"] = "tg"
             await mystic.delete()
-
+            
